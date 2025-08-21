@@ -1,34 +1,31 @@
-# Gunakan Node.js versi 18 slim
 FROM node:18-slim
 
-# Install dependency untuk chromium & font
+# Install Chromium dependencies
 RUN apt-get update && apt-get install -y \
-    chromium \
-    chromium-sandbox \
-    fonts-ipafont-gothic \
-    fonts-wqy-zenhei \
-    fonts-thai-tlwg \
-    fonts-kacst \
-    --no-install-recommends \
- && rm -rf /var/lib/apt/lists/*
+  chromium \
+  chromium-sandbox \
+  fonts-ipafont-gothic \
+  fonts-wqy-zenhei \
+  fonts-thai-tlwg \
+  fonts-kacst \
+  --no-install-recommends && \
+  rm -rf /var/lib/apt/lists/*
 
-# Tentukan path chromium untuk puppeteer/whatsapp-web.js
+# Set Puppeteer Chromium path
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Set workdir
+# Buat direktori app
 WORKDIR /app
 
-# Copy package.json dulu untuk cache
-COPY package.json package-lock.json ./
-
-# Install deps
+# Copy package.json & install dependencies
+COPY package.json ./
 RUN npm install --omit=dev
 
-# Copy semua file project
+# Copy source code
 COPY . .
 
-# Expose port Railway (default 3000)
+# Expose port
 EXPOSE 3000
 
 # Start bot
-CMD ["node", "index.js"]
+CMD ["npm", "start"]
