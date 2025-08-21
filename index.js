@@ -1,263 +1,166 @@
-const { Client, LocalAuth, Buttons } = require("whatsapp-web.js");
 const fs = require("fs");
-const qrcode = require("qrcode-terminal");
 const express = require("express");
+const { Client, LocalAuth, Buttons } = require("whatsapp-web.js");
+const qrcode = require("qrcode-terminal");
 
-// ===== Konfigurasi Nomor Admin & Keluarga =====
-const ADMIN_NUMBERS = ["6281256513331@c.us"]; // nomor admin utama
-const EXEMPT_NUMBERS = ["62xxxxxxxxxx@c.us", "62yyyyyyyyyy@c.us"]; // nomor keluarga/khusus, tidak dibalas bot
+const app = express();
+const PORT = process.env.PORT || 8080;
 
-// ===== Load Session =====
+// nomor yang dikecualikan dari bot (admin/keluarga)
+const EXCLUDE_NUMBERS = ["6281256513331@c.us"];
+
+// simpan sesi user
 let sessions = {};
-if (fs.existsSync("sessions.json")) {
-  try {
-    sessions = JSON.parse(fs.readFileSync("sessions.json"));
-  } catch (err) {
-    console.error("❌ Gagal load sessions.json:", err);
-  }
+const SESSION_FILE = "sessions.json";
+
+// load sesi lama
+if (fs.existsSync(SESSION_FILE)) {
+  sessions = JSON.parse(fs.readFileSync(SESSION_FILE));
 }
 
-// Simpan session ke file
-function saveSessions() {
-  fs.writeFileSync("sessions.json", JSON.stringify(sessions, null, 2));
-}
-
-// Log pesan masuk
-function logMessage(msg) {
-  const logLine = `[${new Date().toISOString()}] ${msg.from}: ${msg.body}\n`;
-  fs.appendFileSync("logs.txt", logLine);
-}
-
-// ===== Buat Client =====
+// inisialisasi client whatsapp
 const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: ".wwebjs_auth" }),
+  authStrategy: new LocalAuth(),
   puppeteer: {
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   },
 });
 
-// ===== Express untuk QR Link =====
-const app = express();
-let latestQR = null;
+client.on("qr", async (qr) => {
+  console.log("📲 QR diterima, simpan di qr.png");
 
-app.get("/", (req, res) => {
-  if (!latestQR) return res.send("QR belum tersedia");
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
-    latestQR
+  // tampilkan juga di terminal
+  qrcode.generate(qr, { small: true });
+
+  // buat link PNG pakai api.qrserver
+  const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+    qr
   )}`;
-  res.send(`<h2>Scan QR WhatsApp</h2><img src="${qrUrl}" />`);
-});
 
-app.listen(8080, () => console.log("🌐 Server berjalan di port 8080"));
-
-// ===== Event Handling =====
-client.on("qr", (qr) => {
-  latestQR = qr;
-  console.log("✅ QR diterima, scan di: http://localhost:8080/");
+  fs.writeFileSync("logs.txt", `Login QR: ${qrLink}\n`);
+  console.log(`✅ Scan QR di sini: ${qrLink}`);
 });
 
 client.on("ready", () => {
-  console.log("🤖 Bot siap digunakan!");
+  console.log("🤖 Bot WhatsApp siap digunakan!");
 });
 
-// ===== Handle Chat =====
+// menu utama
+function getMainMenu() {
+  return new Buttons(
+    "Silakan pilih menu berikut:",
+    [
+      { body: "TOP UP" },
+      { body: "PESAN PRIBADI" },
+      { body: "IZIN CALLING" },
+    ],
+    "📌 MENU UTAMA",
+    "Pilih salah satu opsi di bawah:"
+  );
+}
+
 client.on("message", async (msg) => {
-  logMessage(msg);
+  const from = msg.from;
 
-  // Abaikan pesan dari grup
-  if (msg.from.includes("-")) return;
+  // jika nomor admin/keluarga → biarkan
+  if (EXCLUDE_NUMBERS.includes(from)) return;
 
-  // Abaikan nomor admin/keluarga
-  if (EXEMPT_NUMBERS.includes(msg.from)) return;
-
-  // Ambil session user
-  const user = msg.from;
-  if (!sessions[user]) {
-    sessions[user] = { state: "MENU", lastActive: Date.now() };
-    saveSessions();
-    return showMainMenu(user);
+  if (!sessions[from]) {
+    // tampilkan menu utama pertama kali
+    await client.sendMessage(from, getMainMenu());
+    sessions[from] = { step: "menu" };
+    fs.writeFileSync(SESSION_FILE, JSON.stringify(sessions, null, 2));
+    return;
   }
 
-  // Update waktu aktif
-  sessions[user].lastActive = Date.now();
-  saveSessions();
+  const step = sessions[from].step;
 
-  // Proses berdasarkan state
-  const state = sessions[user].state;
-
-  if (state === "MENU") {
+  // handle menu utama
+  if (step === "menu") {
     if (msg.body === "TOP UP") {
-      sessions[user].state = "TOPUP_SELECT";
-      saveSessions();
-      return showTopupMenu(user);
+      const buttons = new Buttons(
+        "Pilih nominal:",
+        [
+          { body: "150K" },
+          { body: "200K" },
+          { body: "300K" },
+          { body: "500K" },
+          { body: "1/2" },
+          { body: "1" },
+        ],
+        "💰 TOP UP",
+        "Pilih nominal top up"
+      );
+      await client.sendMessage(from, buttons);
+      sessions[from].step = "topup_nominal";
     } else if (msg.body === "PESAN PRIBADI") {
-      sessions[user].state = "PRIVATE_ORDER";
-      saveSessions();
-      return showPrivateMenu(user);
+      const buttons = new Buttons(
+        "Pilih kategori:",
+        [
+          { body: "BON" },
+          { body: "GADAI" },
+          { body: "GADAI HP" },
+          { body: "TEBUS GADAI" },
+          { body: "LAIN-LAIN" },
+        ],
+        "✉️ PESAN PRIBADI",
+        "Pilih salah satu opsi"
+      );
+      await client.sendMessage(from, buttons);
+      sessions[from].step = "pesan_pribadi";
     } else if (msg.body === "IZIN CALLING") {
-      sessions[user].state = "CALLING_PENDING";
-      sessions[user].expiresAt = Date.now() + 5 * 60 * 1000; // 5 menit
-      saveSessions();
-      return client.sendMessage(
-        user,
-        "⏳ Permintaan izin panggilan diterima. Silakan tunggu konfirmasi admin (maks 5 menit)."
+      await client.sendMessage(
+        from,
+        "☎️ Permintaan izin panggilan sedang diproses. Silakan tunggu admin."
       );
-    } else {
-      return showMainMenu(user, "❌ Pilihan tidak valid. Silakan pilih lagi.");
+      sessions[from].step = "izin_call";
     }
   }
 
-  // TOPUP
-  if (state === "TOPUP_SELECT") {
-    if (
-      ["150K", "200K", "300K", "500K", "1/2", "1"].includes(msg.body.toUpperCase())
-    ) {
-      sessions[user].nominal = msg.body.toUpperCase();
-      sessions[user].state = "TOPUP_CONFIRM";
-      saveSessions();
-      return client.sendMessage(
-        user,
-        `Anda memilih nominal *${msg.body}*.\nApakah Anda yakin?`,
-        {
-          buttons: [
-            { body: "✅ Yakin" },
-            { body: "🔄 Ubah" },
-            { body: "⬅️ Kembali" },
-          ],
-        }
+  // handle topup nominal
+  else if (step === "topup_nominal") {
+    sessions[from].nominal = msg.body;
+    const buttons = new Buttons(
+      `Anda memilih ${msg.body}. Lanjutkan?`,
+      [{ body: "BAYAR" }, { body: "BON" }, { body: "KEMBALI" }],
+      "✅ Konfirmasi",
+      "Pilih salah satu"
+    );
+    await client.sendMessage(from, buttons);
+    sessions[from].step = "topup_confirm";
+  }
+
+  // handle topup confirm
+  else if (step === "topup_confirm") {
+    if (msg.body === "BAYAR") {
+      await client.sendMessage(
+        from,
+        `💳 Pembayaran sebesar ${sessions[from].nominal} sedang diproses admin.`
       );
-    } else {
-      return showTopupMenu(user, "❌ Pilihan tidak valid.");
+      sessions[from].step = "menunggu_admin";
+    } else if (msg.body === "BON") {
+      await client.sendMessage(
+        from,
+        `📝 Permintaan BON ${sessions[from].nominal} menunggu persetujuan admin.`
+      );
+      sessions[from].step = "menunggu_admin";
+    } else if (msg.body === "KEMBALI") {
+      await client.sendMessage(from, getMainMenu());
+      sessions[from].step = "menu";
     }
   }
 
-  if (state === "TOPUP_CONFIRM") {
-    if (msg.body === "✅ Yakin") {
-      sessions[user].state = "TOPUP_METHOD";
-      saveSessions();
-      return client.sendMessage(user, "Pilih metode:", {
-        buttons: [{ body: "Bayar" }, { body: "Bon" }],
-      });
-    } else if (msg.body === "🔄 Ubah" || msg.body === "⬅️ Kembali") {
-      sessions[user].state = "TOPUP_SELECT";
-      saveSessions();
-      return showTopupMenu(user);
-    }
-  }
-
-  if (state === "TOPUP_METHOD") {
-    if (msg.body === "Bayar") {
-      sessions[user].state = "WAITING_ADMIN";
-      sessions[user].expiresAt = Date.now() + 60 * 60 * 1000; // 1 jam
-      saveSessions();
-      return client.sendMessage(
-        user,
-        "✅ Transaksi *Bayar* sedang diproses. Mohon tunggu admin."
-      );
-    } else if (msg.body === "Bon") {
-      sessions[user].state = "WAITING_APPROVAL";
-      sessions[user].expiresAt = Date.now() + 60 * 60 * 1000; // 1 jam
-      saveSessions();
-      return client.sendMessage(
-        user,
-        "⏳ Permintaan *Bon* dikirim. Tunggu persetujuan admin."
-      );
-    }
-  }
-
-  // PESAN PRIBADI
-  if (state === "PRIVATE_ORDER") {
-    if (
-      ["BON", "GADAI", "GADAI HP", "TEBUS GADAI", "LAIN-LAIN"].includes(
-        msg.body.toUpperCase()
-      )
-    ) {
-      sessions[user].state = "WAITING_ADMIN";
-      sessions[user].expiresAt = Date.now() + 60 * 60 * 1000; // 1 jam
-      saveSessions();
-      return client.sendMessage(
-        user,
-        `⏳ Pesanan *${msg.body}* diterima. Tunggu respon admin.`
-      );
-    } else {
-      return showPrivateMenu(user, "❌ Pilihan tidak valid.");
-    }
-  }
+  fs.writeFileSync(SESSION_FILE, JSON.stringify(sessions, null, 2));
 });
 
-// ===== Reject Call =====
-client.on("incoming_call", async (call) => {
-  await call.reject();
-  client.sendMessage(
-    call.from,
-    "❌ Maaf, panggilan tidak diizinkan. Silakan gunakan chat untuk akses menu."
-  );
-});
-
-// ===== Session Timeout Checker =====
-setInterval(() => {
-  const now = Date.now();
-  for (const user in sessions) {
-    if (sessions[user].expiresAt && now > sessions[user].expiresAt) {
-      client.sendMessage(
-        user,
-        "⌛ Session Anda telah berakhir. Kembali ke menu utama."
-      );
-      sessions[user] = { state: "MENU", lastActive: now };
-      saveSessions();
-      showMainMenu(user);
-    }
-  }
-}, 60 * 1000);
-
-// ===== Menu Functions =====
-function showMainMenu(user, prefix = "") {
-  client.sendMessage(
-    user,
-    `${prefix}\n📋 *Menu Utama*:\nPilih layanan berikut:`,
-    {
-      buttons: [
-        { body: "TOP UP" },
-        { body: "PESAN PRIBADI" },
-        { body: "IZIN CALLING" },
-      ],
-    }
-  );
-}
-
-function showTopupMenu(user, prefix = "") {
-  client.sendMessage(
-    user,
-    `${prefix}\n💰 *Pilih Nominal TOP UP*`,
-    {
-      buttons: [
-        { body: "150K" },
-        { body: "200K" },
-        { body: "300K" },
-        { body: "500K" },
-        { body: "1/2" },
-        { body: "1" },
-      ],
-    }
-  );
-}
-
-function showPrivateMenu(user, prefix = "") {
-  client.sendMessage(
-    user,
-    `${prefix}\n📦 *PESAN PRIBADI*:\nPilih layanan:`,
-    {
-      buttons: [
-        { body: "BON" },
-        { body: "GADAI" },
-        { body: "GADAI HP" },
-        { body: "TEBUS GADAI" },
-        { body: "LAIN-LAIN" },
-      ],
-    }
-  );
-}
-
-// ===== Start =====
 client.initialize();
+
+// server express (agar Railway tetap hidup)
+app.get("/", (req, res) => {
+  res.send("🤖 WhatsApp Bot Aktif");
+});
+
+app.listen(PORT, () => {
+  console.log(`🌐 Server berjalan di port ${PORT}`);
+});
