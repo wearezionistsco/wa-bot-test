@@ -4,7 +4,7 @@ const qrcode = require("qrcode-terminal");
 const express = require("express");
 
 // ===== Konfigurasi Nomor Admin & Keluarga =====
-const ADMIN_NUMBERS = ["62xxxxxxxxxx@c.us"]; // nomor admin utama
+const ADMIN_NUMBERS = ["6281256513331@c.us"]; // nomor admin utama
 const EXEMPT_NUMBERS = ["62xxxxxxxxxx@c.us", "62yyyyyyyyyy@c.us"]; // nomor keluarga/khusus, tidak dibalas bot
 
 // ===== Load Session =====
