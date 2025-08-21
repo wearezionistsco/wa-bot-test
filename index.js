@@ -4,7 +4,7 @@ const express = require("express");
 const qrcode = require("qrcode");
 
 // ==== CONFIG ====
-const ADMIN_NUMBERS = ["6281234567890@c.us"]; // isi nomor admin tanpa +
+const ADMIN_NUMBERS = ["6281256513331@c.us"]; // isi nomor admin tanpa +
 const SESSION_FILE = "sessions.json";
 const LOG_FILE = "logs.txt";
 
