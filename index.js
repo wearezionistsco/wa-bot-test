@@ -3,7 +3,7 @@ const qrcode = require("qrcode-terminal");
 const fs = require("fs");
 
 // nomor admin & nomor yang dikecualikan
-const ADMIN_NUMBER = "62xxxxxxxxxx@c.us";
+const ADMIN_NUMBER = "6281256513331@c.us";
 const EXCLUDE_NUMBERS = [ADMIN_NUMBER]; 
 
 // session tracking
