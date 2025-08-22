@@ -1,12 +1,9 @@
 {
   "name": "whatsapp-bot",
   "version": "1.0.0",
-  "description": "WhatsApp bot with buttons, sessions, timeouts, call reject, admin commands, and QR via api.qrserver.",
   "main": "index.js",
   "license": "MIT",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "scripts": { "start": "node index.js" },
   "dependencies": {
     "express": "^4.19.2",
     "whatsapp-web.js": "^1.24.0"
