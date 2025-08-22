@@ -1,5 +1,6 @@
-node_modules/
-.wwebjs_auth/
+node_modules
+.wwebjs_auth
 sessions.json
 logs.txt
-qr.png
+.DS_Store
+.env
